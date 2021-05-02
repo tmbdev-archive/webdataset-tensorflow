@@ -1,0 +1,87 @@
+#!/bin/bash
+
+nshards=147
+image=mytf
+
+die() {
+    echo "ERROR: $*"
+    exit 1
+}
+
+
+check_shards() {
+    numshards=$(ls shards/imagenet-train-??????.tar | wc -l)
+    if [[ $numshards != $nshards ]]; then die "wrong # shards in ./shards (got: $numshards, wanted: $nshards)"; fi
+}
+
+
+cmd_clean() { # remove temporary files
+    rm -f *-info.txt
+    rm -f *.pth *.pth.tar
+    rm -f *.log
+}
+
+cmd_venv() { # set up a virtualenv
+    test -d venv || python3 -m venv venv
+    source venv/bin/activate
+    pip3 install -U pip
+    pip3 install -U numpy scipy matplotlib
+    pip3 install -U tensorflow==2.2.0
+    pip3 install -U typer
+    pip3 install -U jupyterlab
+    pip3 install -U -e 'git://github.com/tmbdev/webdataset.git#egg=webdataset'
+    test -f requirements.txt && pip3 install -U -r requirements.txt
+}
+
+cmd_build() {
+    docker build -t $image - < Dockerfile
+}
+
+cmd_docker() {  # run docker locally with some arguments
+    test -d $shards/. || die "$shards: must be a directory"
+    docker run -ti \
+        --rm \
+        --runtime=nvidia \
+        $visibility \
+        -v /etc/passwd:/etc/passwd \
+        -v /etc/group:/etc/group \
+        -u $(id -u):$(id -g) \
+        -v /tmp/.X11-unix:/tmp/.X11-unix \
+        -v $(pwd):$HOME \
+        -v $(pwd):/work \
+        -v ${shards:-$(readlink -f ./shards)}:/shards \
+        -w /work \
+        --ipc host \
+        --net host \
+        -e PS1='<\W>$ ' \
+        -e DISPLAY=$DISPLAY \
+        $image "$@"
+}
+
+cmd_train() {
+    cmd_docker python3 resnet.py "$@"
+}
+
+cmd="${1:-help}"
+shift
+
+set -e
+
+case $cmd in
+help)
+    echo; echo available commands:; echo
+    grep '^cmd_[_0-9a-z]*() {' "$0" | sed 's/cmd_//;s/\(.*\)() *{* *#* */\1 -- /'
+    ;;
+*.py)
+    # cmd_versions
+    set -e
+    # hg status grep -v '^M ' > /dev/null
+    source venv/bin/activate
+    export OMP_NUM_THREADS=1
+    python3 "$cmd" "$@"
+    ;;
+*)
+    set -e
+    eval "cmd_$cmd" "$@"
+    ;;
+esac

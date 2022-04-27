@@ -1,4 +1,4 @@
-FROM tensorflow/tensorflow:latest-gpu-jupyter
+FROM tensorflow/tensorflow:2.9.0rc1-gpu-jupyter
 MAINTAINER Tom <tmbdev@gmail.com>
 ENV DEBIAN_FRONTEND noninteractive
 ENV PATH /usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:.
